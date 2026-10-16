@@ -421,3 +421,131 @@ For questions, feature requests, or to report how MegaDetector worked on your da
 ## License
 
 The MegaDetector **code** in this repository is released under the [MIT License](LICENSE). The **model weights** carry per-variant licenses, MIT, Apache-2.0, or AGPL-3.0 depending on the variant, so check the license of the specific model you deploy. See the [Model Zoo](https://microsoft.github.io/MegaDetector/model_zoo/) for each variant's license.
+---
+
+# Wildlife Corridor Monitoring System
+
+## Project Overview
+
+The Wildlife Corridor Monitoring System is a camera-trap image analysis and risk-assessment prototype built using MegaDetector. It processes wildlife images, identifies detected animals, people, and vehicles, estimates potential spatial interactions, and presents the results through an interactive Streamlit dashboard.
+
+The system aims to support preliminary wildlife corridor monitoring by helping users review animal activity and potential interactions between wildlife and human-related activity.
+
+## Key Features
+
+- **Automated object detection:** Uses MegaDetector to identify animals, people, and vehicles.
+- **Confidence filtering:** Filters detections according to a configurable confidence threshold.
+- **Duplicate suppression:** Reduces overlapping duplicate detections.
+- **Spatial-interaction analysis:** Estimates potential animal–person and animal–vehicle interactions from detection bounding boxes.
+- **Heuristic risk assessment:** Calculates a risk score and assigns a risk category.
+- **Interactive dashboard:** Displays summary statistics, visualizations, and image-level results.
+- **Report generation:** Exports risk summaries, CSV reports, and manual-review outputs.
+
+## System Architecture
+
+1. **Image dataset:** Camera-trap images from the ENA24 dataset.
+2. **Object detection:** MegaDetector generates object categories, confidence scores, and bounding boxes.
+3. **Detection processing:** Confidence filtering and duplicate suppression are applied.
+4. **Spatial analysis:** Bounding-box information is used to estimate potential wildlife interactions.
+5. **Risk assessment:** A heuristic scoring engine produces an overall risk score and category.
+6. **Visualization and reporting:** Streamlit displays the results, while JSON and CSV files store the outputs.
+
+## Dataset and Implementation Results
+
+The current implementation processes 8,789 images.
+
+| Metric | Current result |
+|---|---:|
+| Images processed | 8,789 |
+| Animal detections | 11,284 |
+| Person detections | 63 |
+| Vehicle detections | 370 |
+| Estimated animal–person interaction events | 24 |
+| Estimated animal–vehicle interaction events | 39 |
+| Confidence threshold | 0.25 |
+| Heuristic risk score | 34.83/100 |
+| Risk category | MODERATE |
+
+These are outputs from the current implementation. They should not be interpreted as independently validated real-world wildlife collision rates or probabilities.
+
+## Technology Stack
+
+- Python 3.11
+- MegaDetector and PyTorch-Wildlife
+- pandas and other Python data-processing libraries
+- Streamlit
+- JSON and CSV for storing reports
+- Git and GitHub for version control
+
+## Project Structure
+
+```text
+MegaDetector/
+├── ena24_images/
+├── ena24_results/
+│   └── ena24_full_results.json
+├── risk_reports/
+│   ├── app.py
+│   ├── risk_summary.json
+│   ├── image_level_results.csv
+│   ├── confidence_sensitivity.csv
+│   ├── manual_review_candidates.csv
+│   └── manual_review_contact_sheet.jpg
+├── risk_engine.py
+├── test_risk_engine.py
+└── README.md
+```
+
+The structure above lists the main project components; additional files may exist in the working directory.
+
+## How to Run
+
+Run the following commands from the project root.
+
+### 1. Run automated tests
+
+```powershell
+py -3.11 -m pytest -q
+```
+
+### 2. Generate risk reports
+
+```powershell
+py -3.11 risk_engine.py
+```
+
+### 3. Launch the dashboard
+
+```powershell
+py -3.11 -m streamlit run .\risk_reports\app.py
+```
+
+Open the local URL displayed in the terminal, usually `http://localhost:8501`.
+
+## Output Files
+
+- `risk_summary.json` — overall risk summary.
+- `image_level_results.csv` — image-level analysis results.
+- `confidence_sensitivity.csv` — confidence-threshold comparison results.
+- `manual_review_candidates.csv` — candidates selected for manual inspection.
+- `manual_review_contact_sheet.jpg` — visual contact sheet for reviewing selected images.
+
+## Limitations
+
+- MegaDetector identifies broad object categories; it does not identify individual animal species.
+- Detection errors and false positives may affect the risk assessment.
+- Spatial proximity between bounding boxes is only a proxy for potential interaction, not proof of an actual encounter.
+- The risk score is a heuristic output and has not been established as a calibrated collision probability.
+- Systematic manual validation and independent field data are needed to evaluate detection quality and real-world risk prediction performance.
+
+## Future Enhancements
+
+- Expand manual validation using representative images from different environments.
+- Evaluate detection precision and recall against manually annotated ground truth.
+- Calibrate and validate the risk-scoring method against independently collected observations.
+- Add species classification and temporal or location-based trend analysis where suitable data are available.
+- Evaluate the system on additional camera-trap datasets.
+
+## Acknowledgements
+
+This project uses MegaDetector and the PyTorch-Wildlife framework. Refer to the upstream project's documentation and applicable licenses for model usage and redistribution requirements.

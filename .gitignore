@@ -26,3 +26,19 @@ archive/
 install.sh
 *.code-workspace
 .claude/
+
+# Wildlife Corridor project datasets and raw detection outputs
+dataset/
+ena24_images/
+ena24_results/
+ena24_test/
+ena24_test_results.json
+results/
+
+# Temporary test files
+test.jpg
+
+# Local backup scripts and generated report backups
+src/risk_engine_backup.py
+risk_reports/image_level_results_backup.csv
+risk_reports/image_level_results_old.csv

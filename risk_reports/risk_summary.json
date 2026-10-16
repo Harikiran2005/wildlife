@@ -1,0 +1,19 @@
+{
+    "images_processed": 8789,
+    "total_animals": 11284,
+    "total_people": 63,
+    "total_vehicles": 370,
+    "wildlife_activity_percent": 97.37,
+    "human_activity_percent": 0.59,
+    "vehicle_activity_percent": 3.42,
+    "animal_person_events": 24,
+    "animal_vehicle_events": 39,
+    "human_wildlife_rate_percent": 0.27,
+    "vehicle_wildlife_rate_percent": 0.44,
+    "risk_score": 34.83,
+    "risk_level": "MODERATE",
+    "confidence_threshold": 0.25,
+    "duplicate_iou_threshold": 0.7,
+    "proximity_threshold": 0.1,
+    "risk_score_type": "Heuristic based on confidence-filtered image detections and estimated image-space proximity. Not a validated collision probability."
+}
