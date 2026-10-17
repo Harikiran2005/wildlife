@@ -1,0 +1,2 @@
+sample_size,images_with_all_three_labels,uncertain_images_recorded_separately,unlabelled_sample_images,scope
+100,11,3,89,Preliminary manual review; not representative of the full dataset

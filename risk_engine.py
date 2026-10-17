@@ -4,6 +4,8 @@ import csv
 import math
 from pathlib import Path
 
+from PIL import Image
+
 BASE_DIR = Path(__file__).resolve().parent
 INPUT_FILE = BASE_DIR / "ena24_results" / "ena24_full_results.json"
 REPORT_DIR = BASE_DIR / "risk_reports"
@@ -11,7 +13,7 @@ REPORT_DIR = BASE_DIR / "risk_reports"
 # Configurable parameters
 CONFIDENCE_THRESHOLD = 0.25
 DUPLICATE_IOU_THRESHOLD = 0.70
-PROXIMITY_THRESHOLD = 0.10  # Fraction of estimated image diagonal
+PROXIMITY_THRESHOLD = 0.10  # Fraction of the image diagonal
 
 CATEGORIES = ("animal", "person", "vehicle")
 
@@ -19,7 +21,7 @@ CATEGORIES = ("animal", "person", "vehicle")
 def get_bbox(detection):
     """
     Read bounding boxes in [x1, y1, x2, y2] pixel format.
-    Returns None if the coordinates are missing or invalid.
+    Returns None if coordinates are missing or invalid.
     """
     bbox = detection.get("bbox")
 
@@ -72,8 +74,8 @@ def suppress_duplicates(detections):
             d for d in detections if d["category"] == category
         ]
 
-        with_boxes = [d for d in category_detections if d["bbox"]]
-        without_boxes = [d for d in category_detections if not d["bbox"]]
+        with_boxes = [d for d in category_detections if d["bbox"] is not None]
+        without_boxes = [d for d in category_detections if d["bbox"] is None]
 
         with_boxes.sort(key=lambda d: d["confidence"], reverse=True)
         selected = []
@@ -94,7 +96,6 @@ def suppress_duplicates(detections):
     return kept
 
 
-
 def prepare_detections(image):
     """Validate, confidence-filter, and deduplicate detections."""
     raw = image.get("detections", []) if isinstance(image, dict) else []
@@ -112,9 +113,6 @@ def prepare_detections(image):
         if category not in CATEGORIES:
             continue
 
-        # Treat missing confidence as 1.0 for simplified test
-        # inputs and legacy annotations. Real MegaDetector
-        # outputs contain confidence scores.
         try:
             confidence = float(detection.get("confidence", 1.0))
         except (TypeError, ValueError):
@@ -138,11 +136,43 @@ def prepare_detections(image):
     return suppress_duplicates(valid)
 
 
+def get_image_dimensions(image):
+    """
+    Obtain the actual image dimensions from its file.
+
+    Returns (width, height) if the image can be opened.
+    Returns (None, None) if the image path is missing or unavailable.
+    """
+    if not isinstance(image, dict):
+        return None, None
+
+    filename = image.get("file") or image.get("image")
+
+    if not isinstance(filename, str) or not filename.strip():
+        return None, None
+
+    image_path = Path(filename)
+
+    if not image_path.is_absolute():
+        image_path = BASE_DIR / image_path
+
+    try:
+        with Image.open(image_path) as img:
+            width, height = img.size
+
+        if width > 0 and height > 0:
+            return width, height
+
+    except (OSError, ValueError):
+        pass
+
+    return None, None
+
 
 def boxes_are_near(box_a, box_b, image_diagonal):
     """
     Estimate image-space proximity using the minimum distance
-    between the two bounding rectangles.
+    between two bounding rectangles.
 
     This is not a real-world distance measurement.
     """
@@ -160,10 +190,13 @@ def boxes_are_near(box_a, box_b, image_diagonal):
     return distance / image_diagonal <= PROXIMITY_THRESHOLD
 
 
-def get_image_metrics(image):
+def get_image_metrics(image, image_width=None, image_height=None):
     """
     Return filtered detections, category counts, and interaction flags.
-    Missing bounding boxes do not qualify for spatial interaction.
+
+    Uses actual image dimensions when available. If dimensions are
+    unavailable, uses the previous bounding-box-based fallback to
+    preserve compatibility with existing synthetic test inputs.
     """
     detections = prepare_detections(image)
 
@@ -172,17 +205,25 @@ def get_image_metrics(image):
         for category in CATEGORIES
     }
 
-    boxes = [
-        d["bbox"] for d in detections
-        if d["bbox"] is not None
-    ]
-
-    if boxes:
-        max_x = max(box[2] for box in boxes)
-        max_y = max(box[3] for box in boxes)
-        diagonal = math.hypot(max_x, max_y)
+    if (
+        image_width is not None
+        and image_height is not None
+        and image_width > 0
+        and image_height > 0
+    ):
+        diagonal = math.hypot(image_width, image_height)
     else:
-        diagonal = 0.0
+        boxes = [
+            d["bbox"] for d in detections
+            if d["bbox"] is not None
+        ]
+
+        if boxes:
+            max_x = max(box[2] for box in boxes)
+            max_y = max(box[3] for box in boxes)
+            diagonal = math.hypot(max_x, max_y)
+        else:
+            diagonal = 0.0
 
     animals = [d for d in detections if d["category"] == "animal"]
     people = [d for d in detections if d["category"] == "person"]
@@ -219,7 +260,14 @@ def analyze_images(data):
     image_rows = []
 
     for image in data:
-        counts, animal_person, animal_vehicle = get_image_metrics(image)
+        # Use actual dimensions whenever the corresponding image is available.
+        width, height = get_image_dimensions(image)
+
+        counts, animal_person, animal_vehicle = get_image_metrics(
+            image,
+            image_width=width,
+            image_height=height,
+        )
 
         for category in CATEGORIES:
             totals[category] += counts[category]
@@ -250,6 +298,7 @@ def analyze_images(data):
     human_wildlife_rate = animal_person_events / num_images * 100
     vehicle_wildlife_rate = animal_vehicle_events / num_images * 100
 
+    # Existing heuristic formula retained for comparability.
     risk_score = round(
         0.35 * wildlife_activity
         + 0.25 * human_activity
@@ -297,7 +346,9 @@ def analyze_images(data):
 
 def main():
     if not INPUT_FILE.exists():
-        raise FileNotFoundError(f"Detection results not found: {INPUT_FILE}")
+        raise FileNotFoundError(
+            f"Detection results not found: {INPUT_FILE}"
+        )
 
     with INPUT_FILE.open("r", encoding="utf-8-sig") as f:
         data = json.load(f)
@@ -312,29 +363,49 @@ def main():
     print(f"Total vehicles detected   : {summary['total_vehicles']}")
 
     print("\n--- Activity ---")
-    print(f"Wildlife activity         : {summary['wildlife_activity_percent']:.2f}/100")
-    print(f"Human activity            : {summary['human_activity_percent']:.2f}/100")
-    print(f"Vehicle activity          : {summary['vehicle_activity_percent']:.2f}/100")
+    print(
+        f"Wildlife activity         : "
+        f"{summary['wildlife_activity_percent']:.2f}/100"
+    )
+    print(
+        f"Human activity            : "
+        f"{summary['human_activity_percent']:.2f}/100"
+    )
+    print(
+        f"Vehicle activity          : "
+        f"{summary['vehicle_activity_percent']:.2f}/100"
+    )
 
     print("\n--- Spatial interaction estimates ---")
     print(f"Animal-person events      : {summary['animal_person_events']}")
     print(f"Animal-vehicle events     : {summary['animal_vehicle_events']}")
-    print(f"Human-wildlife rate       : {summary['human_wildlife_rate_percent']:.2f}%")
-    print(f"Vehicle-wildlife rate     : {summary['vehicle_wildlife_rate_percent']:.2f}%")
+    print(
+        f"Human-wildlife rate       : "
+        f"{summary['human_wildlife_rate_percent']:.2f}%"
+    )
+    print(
+        f"Vehicle-wildlife rate     : "
+        f"{summary['vehicle_wildlife_rate_percent']:.2f}%"
+    )
 
     print("\n--- Risk Assessment ---")
     print(f"Risk Score                : {summary['risk_score']:.2f}/100")
     print(f"Risk Level                : {summary['risk_level']}")
     print(f"Confidence threshold      : {CONFIDENCE_THRESHOLD:.2f}")
 
-    with (REPORT_DIR / "risk_summary.json").open("w", encoding="utf-8") as f:
+    with (REPORT_DIR / "risk_summary.json").open(
+        "w", encoding="utf-8"
+    ) as f:
         json.dump(summary, f, indent=4)
 
     with (REPORT_DIR / "image_level_results.csv").open(
         "w", newline="", encoding="utf-8"
     ) as f:
         fields = [
-            "image", "animals", "people", "vehicles",
+            "image",
+            "animals",
+            "people",
+            "vehicles",
             "animal_person_cooccurrence",
             "animal_vehicle_cooccurrence",
         ]
